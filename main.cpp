@@ -63,7 +63,15 @@ void LoadEnvFile(const std::string &path) {
         if (eq == std::string::npos) continue;
         std::string key = line.substr(0, eq);
         std::string value = line.substr(eq + 1);
+        if (!key.empty() && key.back() == '\r') key.pop_back();
+        if (!value.empty() && value.back() == '\r') value.pop_back();
+        if (!key.empty() && key.front() == '\xEF') key = key.substr(3);
 #ifdef _WIN32
+        for (auto &ch : value) {
+            if (ch == '\t') ch = ' ';
+        }
+#endif
+        #ifdef _WIN32
         _putenv_s(key.c_str(), value.c_str());
 #else
         setenv(key.c_str(), value.c_str(), 1);
@@ -83,6 +91,7 @@ int main() {
     if (const char *envAdmin = std::getenv("TELEGRAM_ADMIN_ID")) {
         adminId = std::atoll(envAdmin);
     }
+    std::cout << "Bot started. adminId=" << adminId << "\n";
 
     curl_global_init(CURL_GLOBAL_DEFAULT);
 
@@ -92,12 +101,15 @@ int main() {
                           "/getUpdates?timeout=25&offset=" + std::to_string(offset);
         std::string body = HttpGet(url);
         if (body.empty()) {
+            std::cout << "HTTP empty response\n";
             std::this_thread::sleep_for(std::chrono::milliseconds(800));
             continue;
         }
 
         json data = json::parse(body, nullptr, false);
         if (data.is_discarded() || !data.value("ok", false)) {
+            std::cout << "Bad JSON or ok=false. Body: ";
+            std::cout << body.substr(0, 300) << "\n";
             std::this_thread::sleep_for(std::chrono::milliseconds(800));
             continue;
         }
@@ -111,6 +123,7 @@ int main() {
             if (!msg.contains("text")) continue;
 
             std::string text = msg.value("text", "");
+            std::cout << "Message from " << chatId << ": " << text << "\n";
             if (!IsAllowed(chatId, adminId)) {
                 SendMessage(kBotToken, chatId, "Access denied.");
                 continue;
